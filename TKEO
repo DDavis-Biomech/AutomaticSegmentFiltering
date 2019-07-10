@@ -1,0 +1,104 @@
+function [ TeagEn ] = TeagerEnergy( x, iopt )
+
+%  Purpose - computes the Teager energy operator of a signal
+%  -------
+%
+%  John H Challis (November 11, 2017)
+%
+%  input
+%  -----
+%  x - signal to analyze
+%  iopt - option to plot data, if iopt == 0 no plot
+%
+%  output
+%  ------
+%  TeagEn  - Teager energy operator
+%
+%  notes
+%  -----
+%  1. The Teager Energy Operator is determined using,
+%  x(i) = x^2(i) + x(i - 1)x(i + 1) 
+%  2. The key reference is,
+%     Kaiser, J. F. (1990)
+%     On a simple algorithm to calculate the `energy' of a signal.
+%     Paper presented at the 1990 International Conference on Acoustics, Speech, and Signal Processing,  ICASSP-90.
+%
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%                          %
+%  check number of inputs  %
+%                          %
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+if nargin<2
+    iopt = 0;
+end
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%                                       %
+%  check input signal is column vector  %
+%                                       %
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+[ m, n ] = size( x );
+if m < n
+    x = x';         %  correction if necessary
+end
+
+
+%%%%%%%%%%%%%%%%%%%
+%                 %
+%  how much data  %
+%                 %
+%%%%%%%%%%%%%%%%%%%
+n = length( x );
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%                                        %
+%  compute x(i) = x^2(i) - x(i-1)x(i+1)  %
+%                                        %
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+xsqu = x(2:n-1).^2;
+odds = x(1:n-2);
+even = x(3:n);
+
+%  now compute energy from components
+%
+TeagEn = xsqu - ( odds .* even);
+
+% whos
+
+%  make energy array same length as input signal
+%
+TeagEn = [TeagEn(1); TeagEn; TeagEn(n-2)]; 
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%                          %
+%  plot signal and energy  %
+%                          %
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+if abs( iopt ) > 0
+%
+    subplot( 2, 1, 1)
+    plot( x, 'LineWidth', 2, 'color','r')
+    box off
+    axis tight
+    xlabel('Sample Number', 'FontSize', 16)
+    title('Original Signal', 'FontSize', 16)
+%
+    subplot( 2, 1, 2)
+    plot( TeagEn, 'LineWidth', 2, 'color','r')
+    box off
+    axis tight
+    xlabel('Sample Number', 'FontSize', 16)
+    title('Teager Energy', 'FontSize', 16)
+%
+end
+
+%
+%%
+%%%The End%%%
+%%
+%
