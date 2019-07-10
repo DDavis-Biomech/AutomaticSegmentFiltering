@@ -1,0 +1,128 @@
+function [newJoin1, newJoin2, newJoin3, newJoin4, pad] = joins4(CP1, CP2, CP3, CP4, estim1, estim2, estim3, estim4, estim5)
+
+% uses moving average function to smooth signal discrepancies at signal
+% joins due to the use of different filter cut-off frequencies
+
+[ ~, estimCol ] = size(estim1);
+
+% find shortest segment length to determine amount of "pad" on each side of
+% join
+segLengths = [CP2 - CP1; CP3 - CP2; CP4 - CP3];
+shortestSmooth = min(segLengths);
+
+% round the pad to be an integer
+mult = 2;
+roundDown = mult * floor((shortestSmooth-1)/mult) + 1;
+roundUp = mult * ceil((shortestSmooth-1)/mult) + 1;
+roundResi = [abs(roundDown - shortestSmooth), abs(roundUp - shortestSmooth)];
+
+UporDown = find(max(roundResi));
+
+if UporDown == 1
+       smoothLength = roundDown;
+else
+       smoothLength = roundUp;
+end
+
+
+%  pads on each side of cut-point
+pad = (smoothLength-1)/2;
+
+
+%  row vector with weights applied to differences 
+weights = linspace(1,0,smoothLength)';
+
+
+%preallocate 
+join1a = zeros(length(smoothLength), estimCol);
+join1b = zeros(length(smoothLength), estimCol);
+join2a = zeros(length(smoothLength), estimCol);
+join2b = zeros(length(smoothLength), estimCol);
+join3a = zeros(length(smoothLength), estimCol);
+join3b = zeros(length(smoothLength), estimCol);
+join4a = zeros(length(smoothLength), estimCol);
+join4b = zeros(length(smoothLength), estimCol);
+
+difs1 = zeros(length(smoothLength), estimCol);
+difs2 = zeros(length(smoothLength), estimCol);
+difs3 = zeros(length(smoothLength), estimCol);
+difs4 = zeros(length(smoothLength), estimCol);
+
+weightedDifs1 = zeros(length(smoothLength), estimCol);
+weightedDifs2 = zeros(length(smoothLength), estimCol);
+weightedDifs3 = zeros(length(smoothLength), estimCol);
+weightedDifs4 = zeros(length(smoothLength), estimCol);
+
+newJoin1 = zeros(length(smoothLength), estimCol);
+newJoin2 = zeros(length(smoothLength), estimCol);
+newJoin3 = zeros(length(smoothLength), estimCol);
+newJoin4 = zeros(length(smoothLength), estimCol);
+
+% create joins where sections meet
+for j = 1:estimCol
+    newestim1 = estim1(:,j);
+    newestim2 = estim2(:,j);
+    newestim3 = estim3(:,j);
+    newestim4 = estim4(:,j);
+    newestim5 = estim5(:,j);
+
+join1a(1:smoothLength,j) = newestim1(CP1 - pad : CP1 + pad);
+join1b(1:smoothLength,j) = newestim2(CP1 - pad : CP1 + pad)';
+    
+join2a(1:smoothLength,j) = newestim2(CP2 - pad : CP2 + pad)'; 
+join2b(1:smoothLength,j) = newestim3(CP2 - pad : CP2 + pad)';
+
+join3a(1:smoothLength,j) = newestim3(CP3 - pad : CP3 + pad)'; 
+join3b(1:smoothLength,j) = newestim4(CP3 - pad : CP3 + pad)';
+
+join4a(1:smoothLength,j) = newestim4(CP4 - pad : CP4 + pad)'; 
+join4b(1:smoothLength,j) = newestim5(CP4 - pad : CP4 + pad)';
+
+
+%  produce smoothed section "newJoin1" from join1a and join1b
+for r = 1:smoothLength
+    
+    difs1(r,j) = join1a(r,j) - join1b(r,j);
+    
+    weightedDifs1(r,j) = weights(r,j) * difs1(r,j);
+    
+    newJoin1(r,j) = join1b(r,j) + weightedDifs1(r,j);
+    
+end
+
+%  produce smoothed section "newJoin2" from join2a and join2b
+for r = 1:smoothLength
+        
+    difs2(r,j) = join2a(r,j) - join2b(r,j);
+    
+    weightedDifs2(r,j) = weights(r,j) * difs2(r,j);
+    
+    newJoin2(r,j) = join2b(r,j) + weightedDifs2(r,j);
+    
+end
+
+
+%  produce smoothed section "newJoin3" from join3a and join3b
+for r = 1:smoothLength
+        
+    difs3(r,j) = join3a(r,j) - join3b(r,j);
+    
+    weightedDifs3(r,j) = weights(r,j) * difs3(r,j);
+    
+    newJoin3(r,j) = join3b(r,j) + weightedDifs3(r,j);
+    
+end
+
+
+%  produce smoothed section "newJoin4" from join4a and join4b
+for r = 1:smoothLength
+        
+    difs4(r,j) = join4a(r,j) - join4b(r,j);
+    
+    weightedDifs4(r,j) = weights(r,j) * difs4(r,j);
+    
+    newJoin4(r,j) = join4b(r) + weightedDifs4(r,j);
+    
+end
+
+end
