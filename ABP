@@ -1,0 +1,77 @@
+function [ fdata, co ] = filtmat_auto( dt, forder, data);
+
+%  purpose - iteratively automatically compute cut-off frequency for Butterworth filter
+%  -------
+%
+%  calling - [ fdata, co ] = filtmat_auto( dt, forder, data)
+%  --------
+%
+%  John H. Challis, The Penn. State University, (March 18, 2002)
+%
+%  inputs
+%  ------
+%  dt     - interval between samples
+%  forder - order of filter
+%  data   - the matrix containing the data
+%
+%  output
+%  ------
+%  fdata - the filtered input data
+%  co    - selected cut-off frequencies
+%
+%  calls
+%  -----
+%  auto - iteratively computes optimal cut-off frequency
+%  filtmat - which filters data in forward and reverse directions using Butterworth filter
+%
+%  notes
+%  -----
+%  1)  These computations are based on the algorithm described in
+%      Challis, J.H. (1999)  A procedure for the automatic determination of filter cutoff
+%      frequency for the processing of biomechanical data.  Journal of Applied Biomechanics  15:303-317.
+%
+
+%%%%%%%%%%%%%%%%%%%
+%                 %
+%  how much data  %
+%                 %
+%%%%%%%%%%%%%%%%%%%
+[ n, m ] = size( data );
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%                                %
+%  loop for each column of data  %
+%                                %
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+for i=1:m
+
+%  set column for analysis
+%
+	nsignal = data(:,i);
+
+%  determine cut-off
+%
+	[ co(i) ]= auto( nsignal, dt, forder);
+   
+%  loop back for next column of data
+%
+end
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%
+%                       %
+%  now filter the data  %
+%                       %
+%%%%%%%%%%%%%%%%%%%%%%%%%
+for i=1:m
+   fdata(:,i) = filtmat( dt, co(i), forder, data(:,i));
+end
+
+
+%
+%%
+%%% The End %%%
+%%
+%
+
