@@ -1,0 +1,38 @@
+function [ numChangePoints, CPs ] = changePoints(TKEO, MAD3)
+
+% function uses the TKEO to determine the number of change-points in a
+% given signal and lists the sample indexes where they occur
+
+% locate where the TKEO is greater than the outlier criterion
+Outliers = find(TKEO > MAD3);
+
+% determine where the outlier samples break ie, going from one area of
+% outliers to the next
+ConsecBreaks = find(diff(Outliers) ~= 1);
+
+% a single break indicates two outlier areas and so on
+numOutlierAreas = length(ConsecBreaks) + 1;
+
+% each outlier area counts as a segment plus the areas of the signal before
+% and after these outlier areas
+numSegments = (numOutlierAreas * 3) - length(ConsecBreaks);
+
+% initialize the list of change points
+CPs = zeros(1,numSegments-1);
+
+% first change point is first instance of an outlier
+CPs(1) = Outliers(1);
+
+% successive change points occur at the break in consecutive sample indexes 
+for i = 1:length(ConsecBreaks)
+    CPs(i+1) = Outliers(ConsecBreaks(i));
+    CPs(i+2) = Outliers(ConsecBreaks(i)+1);
+end
+
+% last change point is last instance of outlier
+CPs(end) = Outliers(end);
+
+numChangePoints = length(CPs);
+
+
+end
