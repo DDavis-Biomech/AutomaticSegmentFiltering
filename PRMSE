@@ -1,0 +1,47 @@
+function [ error ] = prmse( crit, estim )
+
+%  purpose - to determine the percentage root mean square error
+%  -------   function [error]=prmse(crit,estim);
+%
+%  John H. Challis, The Penn. State University (July 31, 1997)
+%
+%  calling - [ error ] = prmse( crit, estim )
+%  -------
+%
+%  inputs
+%  ------
+%  crit    - criterion values
+%  estim   - estimated values
+%
+%  output
+%  ------
+%  error   - the percentage root mean square error/difference
+%
+%  notes
+%  -----
+%  the root mean square error is also computed but not returned by the current
+%  version of the routine
+%
+
+m = size(crit, 1);
+
+%  compute differences and sums
+%
+sumx  = sum( ( crit - estim ).^2);
+meanx = sum( ( crit .* crit)  );
+
+%  compute rmse
+%
+%error = (sumx / (m - 1) ).^0.5;
+error = (sumx / (m) ).^0.5;
+
+%  compute %rmse
+%
+%meanx   = (meanx  / (m - 1) ).^0.5;
+meanx   = (meanx  / (m) ).^0.5;
+
+error = (error / meanx) * 100.;
+
+
+%%%% the end %%%%
+
