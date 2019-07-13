@@ -1,4 +1,4 @@
-% total
+ % Implement 
 % ---------
 %
 %   Using data with raw displacement and reference acceleration this code: 
@@ -13,18 +13,7 @@
 %       to the reference.
 %      
 %
-%  notes
-%  -----
-%  ABP from: John H. Challis, The Penn. State University (December 4, 1997)
-%
-%  The Teager Energy Operator is determined using,
-%  x(n) = x^2(n) + x(n - 1)x(n + 1)
-%
-%  MAD is determined using,
-%  MAD = median ( abs( xi - Mn))
-%       where b = normality constant = 1.4826
-%       xi = given data point
-%       Mn = median of set of data points
+
 
 close all
 clear
@@ -88,118 +77,34 @@ disp( '   -------------------')
 
 %%  ABP-BASED SEGMENT FILTERING     
 
-% filter raw displacement data first as Teager-Kaiser Energy Operator (TKEO) 
-% is sensitive to noise. Cut-off as selected by ABP on entire signal
-[ TeagEn ] = TeagerEnergy( ABP_DisplEstim );
+% Estimate displacement and acceleration 
+[TKEO,MAD3, SegFilt_DEstim, SegFilt_AEstim, CPs, fco ] = segfilt_estim(RawDisplace);
 
-% ABP is computed on TKEO to determine cut-off frequency as may still
-% contain noise
-[ TeagEnFilt, coT ] = filtmat_auto( dt, 2, TeagEn);
-
-% comment out whichever method not used
-option = 1;             % 3 * MAD
-% option = 2;             % "findchangepts" function in matlab
-
-if option == 1
-
-% Compute 3* Median Absolute Deviation 
-MAD3  = 3*mad(TeagEnFilt);
-
-% Determine number of change-points and each sample index
-[numCPs, CPs] = changePoints(TeagEnFilt, MAD3);
-
-end
-
-
-if option == 2
-    
-TeagInt = cumtrapz(TeagEnFilt);
-[CPs] = findchangepts(TeagInt,'Statistic','linear','MinThreshold',var(TeagInt));
-
-end
-
-
-%  Split data into segments   %
-seg1 = 1:CPs(1); 
-seg2 = seg1(end)+1:CPs(2);     
-seg3 = seg2(end)+1:CPs(3);
-seg4 = seg3(end)+1:CPs(4);
-seg5 = seg4(end)+1:length(data);
-
-
-%  use ABP to find cut-off frequency for each segment  
-
-%  Segment 1  %
-% determines cut-off frequency based on raw displacement data in segment 1
-% and filters raw data with said cut-off frequency
-[ seg1_Dsignal, co1 ] = filtmat_auto( dt, 2, RawDisplace(seg1));
-
-%  use frequency cut-off to double-differentiate the data, creating an acceleration
-%  estimate
-fco1_Aestim =  fdiff2(dt, co1, 2, RawDisplace);                 
-
-
-%  Segment 2  %
-[ seg2_Dsignal, co2 ] = filtmat_auto( dt, 2, RawDisplace(seg2));
-fco2_Aestim =  fdiff2(dt, co2, 2, RawDisplace);         
-
-
-%  Segment 3  %
-[ seg3_Dsignal, co3 ] = filtmat_auto( dt, 2, RawDisplace(seg3));
-fco3_Aestim =  fdiff2(dt, co3, 2, RawDisplace);        
-
-%  Segment 4  %
-[ seg4_Dsignal, co4 ] = filtmat_auto( dt, 2, RawDisplace(seg4));
-fco4_Aestim =  fdiff2(dt, co4, 2, RawDisplace);    
-
-%  Segment 5  %
-[ seg5_Dsignal, co5 ] = filtmat_auto( dt, 2, RawDisplace(seg5));
-fco5_Aestim =  fdiff2(dt, co5, 2, RawDisplace);         
-
-fcos = [co1, co2, co3, co4, co5];
-
-
-%  Combine five segment estimates at the four change-points using four
-%  joins. Pad is simply a number of samples on either side of the
-%  change-points
-[ newJoin1, newJoin2, newJoin3, newJoin4,  pad1 ] = joins4(CPs(1), CPs(2), CPs(3), CPs(4), fco1_Aestim, fco2_Aestim, fco3_Aestim, fco4_Aestim, fco5_Aestim);
-
-SegFilt_AEstim = [fco1_Aestim(seg1(1:end-(pad1+1)))'  newJoin1'  fco2_Aestim(seg2((pad1+1):end-(pad1+1)))'...
-    newJoin2'  fco3_Aestim(seg3((pad1+1):end-(pad1+1)))' newJoin3' fco4_Aestim(seg4((pad1+1):end-(pad1+1)))' ...
-    newJoin4'  fco5_Aestim(seg5((pad1+1):end))'];
-
-SegFilt_AEstim = SegFilt_AEstim';
-
-% Refilter at highest cut-off to address high frequency artifact potentially introduced
-% near change points
-SegFilt_AEstim = filtmat(dt, max(fcos), forder, SegFilt_AEstim);
-
-
-%%% COMPUTE ERRORS %%%
+%% COMPUTE ERRORS %%
 
 % Segment filtering whole signal accel error
 [ SegFilt_Aerror ] = prmse(AccelRef, SegFilt_AEstim);
 
 % Segment by segment errors
-% seg1
-segfilt_segAerr(1) = prmse(AccelRef(seg1), SegFilt_AEstim(seg1));         
-ABP_segAerr(1) = prmse(AccelRef(seg1), ABP_AccelEstim(seg1));
+% initialize
+segfilt_segAerr = zeros(1,length(CPs)+1);
+ABP_segAerr = zeros(1,length(CPs)+1);
 
-% seg2
-segfilt_segAerr(2) = prmse(AccelRef(seg2), SegFilt_AEstim(seg2));       
-ABP_segAerr(2) = prmse(AccelRef(seg2), ABP_AccelEstim(seg2));
+% First Segment
+segfilt_segAerr(1) = prmse(AccelRef(1:CPs(1)), SegFilt_AEstim(1:CPs(1)));         
+ABP_segAerr(1) = prmse(AccelRef(1:CPs(1)), ABP_AccelEstim(1:CPs(1)));
 
-% seg3
-segfilt_segAerr(3) = prmse(AccelRef(seg3), SegFilt_AEstim(seg3));      
-ABP_segAerr(3) = prmse(AccelRef(seg3), ABP_AccelEstim(seg3));
+for e = 2:length(CPs)
+    
+% Middle Segments
+segfilt_segAerr(e) = prmse(AccelRef(CPs(e-1)+1:CPs(e)), SegFilt_AEstim(CPs(e-1)+1:CPs(e)));       
+ABP_segAerr(e) = prmse(AccelRef(CPs(e-1)+1:CPs(e)), ABP_AccelEstim(CPs(e-1)+1:CPs(e)));
 
-% seg4
-segfilt_segAerr(4)  = prmse(AccelRef(seg4), SegFilt_AEstim(seg4)); 
-ABP_segAerr(4) = prmse(AccelRef(seg4), ABP_AccelEstim(seg4));
+end
 
-% seg5
-segfilt_segAerr(5)  = prmse(AccelRef(seg5), SegFilt_AEstim(seg5)); 
-ABP_segAerr(5) = prmse(AccelRef(seg5), ABP_AccelEstim(seg5));
+% Last Segment
+segfilt_segAerr(end)  = prmse(AccelRef(CPs(end)+1:end), SegFilt_AEstim(CPs(end)+1:end)); 
+ABP_segAerr(end) = prmse(AccelRef(CPs(end)+1:end), ABP_AccelEstim(CPs(end)+1:end));
 
 segAerr = [segfilt_segAerr; ABP_segAerr];
 
@@ -211,150 +116,10 @@ max_segfilt_error = abs((max(AccelRef) - max(SegFilt_AEstim)) / (max(AccelRef)))
 
 %   display analysis statistics  %
 disp( '   -------------------')
-disp( ['      Cut-off frequencies [',num2str(co1),', ',num2str(co2),', ',num2str(co3),', ',num2str(co4),', ',num2str(co5),'] Hz'] )
+disp( ['      Cut-off frequencies [',num2str(fco),' Hz]'] )
 disp( ['Second Order Derivative %Root Mean Square Error ',num2str(SegFilt_Aerror),' % '] )
 disp( ['Signal Minimum %Error ',num2str(min_segfilt_error),' % '] )
 disp( ['Signal Maximum %Error ',num2str(max_segfilt_error),' % '] )
 disp( '   -------------------')
 disp( '   -------------------')
 array2table(segAerr)
-
-
-%% TKEO PLOT
-
-if option == 1 % 3 x MAD method
-    
-%%% VISUALIZE SEGMENTATION %%%
-
-% Segment location text locations
-Stextloc1 = (Time(CPs(1))/2);
-Stextloc3 = (Time(CPs(2)) + Time(CPs(3)))/2;
-Stextloc5 = (Time(CPs(4)) + Time(end))/2;
-
-% using arrows for segments 2 and 4
-Sarrow1_xloc = [0.425 0.385];
-Sarrow1_yloc = [.575 .5286];
-
-Sarrow2_xloc = [0.685 0.65];
-Sarrow2_yloc = [.575 .5286];
-
-% annotate the change point and segments
-CPtext1 = 'Change point 1';
-CPtext2 = 'Change point 2';
-CPtext3 = 'Change point 3';
-CPtext4 = 'Change point 4';
-
-Stext1 = 'Segment 1';
-Stext2 = 'Segment 2';
-Stext3 = 'Segment 3';
-Stext4 = 'Segment 4';
-Stext5 = 'Segment 5';
-
-% TKEO plot
-figure(1)
-plot(Time, TeagEnFilt,'color',[0.04 0.3 0.66],'LineWidth',2)
-box off
-hold on
-plot([0 Time(end)], [MAD3 MAD3],'k','Linewidth',2)
-plot([Time(CPs(1)) Time(CPs(1))], [-2*10^(-4) 14*10^(-4)],'k--')
-plot([Time(CPs(2)) Time(CPs(2))], [-2*10^(-4) 14*10^(-4)],'k--')
-plot([Time(CPs(3)) Time(CPs(3))], [-2*10^(-4) 14*10^(-4)],'k--')
-plot([Time(CPs(4)) Time(CPs(4))], [-2*10^(-4) 14*10^(-4)],'k--')
-
-text(Stextloc1,6*10^(-4), Stext1,'FontSize',14,'HorizontalAlignment','center')
-annotation('textarrow',Sarrow1_xloc,Sarrow1_yloc,'string',Stext2,'FontSize',14)
-text(Stextloc3,6*10^(-4), Stext3,'FontSize',14,'HorizontalAlignment','center')
-annotation('textarrow',Sarrow2_xloc,Sarrow2_yloc,'string',Stext4,'FontSize',14)
-text(1,6*10^(-4), Stext5,'FontSize',14,'HorizontalAlignment','center')
-
-title('TKEO of Angular Displacement','FontSize',16)
-% xlabel('Time [s]','FontSize',14)
-ylabel('Energy','FontSize',14)
-legend({'TKEO','3 x MAD'},'FontSize',14)
-set(gcf, 'Position',[5,50, 850, 450])
-axis tight
-
-end
-
-
-if option == 2 % 'findchangepts' option
-
-figure(1)
-plot(Time, TeagInt,'color',[0.04 0.3 0.66],'LineWidth',2)
-box off
-hold on
-plot([Time(CPs(1)) Time(CPs(1))], [-0.01 0.07],'k--')
-plot([Time(CPs(2)) Time(CPs(2))], [-0.01 0.07],'k--')
-plot([Time(CPs(3)) Time(CPs(3))], [-0.01 0.07],'k--')
-plot([Time(CPs(4)) Time(CPs(4))], [-0.01 0.07],'k--')
-title('Cumulative Sum of Angular Displacement TKEO','FontSize',16)
-xlabel('Time [s]','FontSize',14)
-ylabel('Energy','FontSize',14)
-legend({'Cumulative TKEO Sum','Change Points'},'FontSize',14,'location','southeast')
-set(gcf, 'Position',[5,50, 850, 500])
-axis tight
-
-end
-
-%% ACCELERATION ESTIMATE PLOTS
-
-% frequency cut-offs text location
-Atextloc1 = (Time(CPs(1))/2);
-Atextloc3 = (Time(CPs(2)) + Time(CPs(3)))/2;
-Atextloc5 = (Time(CPs(4)) + Time(end))/2;
-
-% using arrows for segments 2 and 4
-arrow1_xloc = [0.44 0.398];
-arrow1_yloc = [.22 1/3];
-
-arrow2_xloc = [0.69 0.65];
-arrow2_yloc = [(1-289/600) (1-270/600)];
-
-% annotate the cut-off frequency used for that signal    
-Atext1 = [num2str(co1),' Hz'];
-Atext2 = [num2str(co2),' Hz'];
-Atext3 = [num2str(co3),' Hz'];
-Atext4 = [num2str(co4),' Hz'];
-Atext5 = [num2str(co5),' Hz'];
-
-% single filter cut-off annotation
-AABPtextloc = (Time(CPs(2)) + Time(CPs(3)))/2;
-AABPtext = ['Single filter: ',num2str(coABP),' Hz'];
-
-
-figure(2)
-plot( Time, AccelRef,'k')
-hold on
-title('Reference Angular Acceleration and Estimates','FontSize', 16)
-hold on
-plot( Time, SegFilt_AEstim,'color',[0.04 0.3 0.66],'LineWidth', 2)
-plot(Time, ABP_AccelEstim, '-.','Color','r','LineWidth', 2)
-plot([Time(CPs(1)) Time(CPs(1))], [-400 200],'k--')
-plot([Time(CPs(2)) Time(CPs(2))], [-400 200],'k--')
-plot([Time(CPs(3)) Time(CPs(3))], [-400 200],'k--')
-plot([Time(CPs(4)) Time(CPs(4))], [-400 200],'k--')
-% plot( Time, fco1_Aestim,'color',[0.97, 0.69, 0.69])
-% plot( Time, fco2_Aestim,'color',[0.97, 0.69, 0.69])
-% plot( Time, fco3_Aestim,'color',[0.97, 0.69, 0.69])
-% plot( Time, fco4_Aestim,'color',[0.97, 0.69, 0.69])
-% plot( Time, fco5_Aestim,'color',[0.97, 0.69, 0.69])
-text(Atextloc1,70, Atext1,'FontSize',14,'HorizontalAlignment','center','color',[0.04 0.3 0.66])
-annotation('textarrow',arrow1_xloc,arrow1_yloc,'string',Atext2,'color',[0.04 0.3 0.66],'FontSize',14)
-text(Atextloc3,25, Atext3,'FontSize',14,'HorizontalAlignment','center','color',[0.04 0.3 0.66])
-annotation('textarrow',arrow2_xloc,arrow2_yloc,'string',Atext4,'color',[0.04 0.3 0.66],'FontSize',14)
-text(1.03,65, Atext5,'FontSize',14,'HorizontalAlignment','center','color',[0.04 0.3 0.66])
-% text(AABPtextloc, 150, AABPtext,'FontSize',12,'HorizontalAlignment','center','color','blue')
-hold off
-ylabel('Angular Acceleration [rad/s^2]','FontSize', 14)
-xlabel('Time [s]','FontSize', 14)
-legend({' Criterion Acceleration',' Segment Filtering',[' Single Filter (',num2str(coABP),' Hz)']},'FontSize',14,'Location','southeast')
-set(gcf,'Position',[642,50,850,590])
-axis tight
-box off
-
-
-%
-%%
-%%%The End%%%
-%%
-%
