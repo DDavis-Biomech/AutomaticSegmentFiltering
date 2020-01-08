@@ -1,19 +1,31 @@
- % Implement 
-% ---------
+% Automatic Segment Filtering Procedure Comparison
+% -----------
 %
-%   Using data with raw displacement and reference acceleration this code: 
+% -----------
+%
+% Daniel J. Davis and John H. Challis 
+%   The Pennsylvania State University, January 2020
+%
+% -----------
+%
+%   This code runs the ASFP analysis and outputs Figure 2 as seen in Davis, D.J. & 
+%       Challis, J.H. (in Press). Automatic segment filtering procedure for processing 
+%        non-stationary signals. Journal of Biomechanics.
+%
+% -----------
+%
+%   Using data from Dowling (1985) with raw displacement and reference acceleration this code: 
 %       1) Computes a Butterworth filter cut-off frequency using the
 %       autocorrelation-based procedure (Challis, 1999) and applies that
 %       filter to the data. Compares estimate to reference.
-%       2) Utilizes Teager Energy to compute segment change-points in
+%       2) Utilizes Teager Energy to compute signal change-points in
 %       dataset then conducts ABP on each segment. Finally, joins segments
 %       together to create an estimate and compares it to reference.
-%       3) Outputs a plot of the Teager-Kaiser Energy Operator and
-%       acceleration estimates along with error for each estimate compares
-%       to the reference.
-%      
+%       3) Outputs a plot of the raw data, Teager-Kaiser Energy Operator
+%       and change-point criterion, and acceleration estimates. Outputs with error 
+%       for each estimate compared to the reference.
 %
-
+% ---------------------------------------------------------------------------
 
 close all
 clear
@@ -22,104 +34,260 @@ clear
 global fs dt forder Time
 
 %% LOAD DATA
-
-file = 'TestDataSet2.xls';      % data set from Dowling (1985)
+file = 'Dowling_1985_TestDataSet.xls';      % data set from Dowling (1985); non-stationary pendulum impact
 data = xlsread(file);
+
 Time = data(:,1);
 RawDisplace = data(:,2);
-nAccelRef = data(:,3);
-
-% integrated to compute velocity and displacement from reference data
-VelocRef = cumtrapz(Time,nAccelRef);
-DisplaceRef = cumtrapz(Time,VelocRef)+RawDisplace(1,1);
+AccelRef = data(:,3);
 
 % data collection parameters
-fs = 512; 
-dt = 1/fs;
-
-% Butterworth filter order (recursive so is effectively doubled)
+dt = Time(2) - Time(1);
+fs = 1/dt;
+% Butterworth filter order (recursive so order is effectively doubled)
 forder = 2;
 
-% filter reference data to reduce any remaining noise
-[AccelRef, coRef] = filtmat_auto(dt, forder, nAccelRef);
 
-% compute difference between raw reference and filtered reference
-% acceleration for the entire signal, the signal minimum, and the signal
-% maximum
-Ref_error = prmse(AccelRef, nAccelRef);
-minRef_error = abs((min(AccelRef) - min(nAccelRef)) / (min(AccelRef))) * 100;
-maxRef_error = abs((max(AccelRef) - max(nAccelRef)) / (max(AccelRef))) * 100;
+% integrated to compute velocity and displacement from reference data
+[ fAccelRef, coAR] = filtmat_auto(dt,forder,AccelRef);
+VelocRef = cumtrapz(Time,fAccelRef);
+DisplRef = cumtrapz(Time,VelocRef)+mean(RawDisplace(1:10)); 
+
+% uncomment to add random noise similar to optical motion tracking systems
+%       as a test of the procedure.
+% noise = 0.005;
+% RawDisplace = DisplRef+ noise*randn(600,1);
+
+TKEORef = TeagerEnergy(DisplRef);
+MAD3Ref = 3*mad(abs(TKEORef));
+[numCPsRef, CPsRef] = changePoints(TKEORef,MAD3Ref);
 
 
 %% SINGLE FILTER APPROACH USING ABP
                
 % determines 'optimal' filter cut-off frequency (coABP) for full signal and applies it,
 % creating a new displacement estimate
-[ ABP_DisplEstim, coABP ] = filtmat_auto( dt, 2, RawDisplace);
+[ ABP_DisplEstim, coABP ] = filtmat_auto( dt, forder, RawDisplace);
 
 % use cut-off to filter and double-differentiate the data
 ABP_AccelEstim =  fdiff2(dt, coABP, 2, RawDisplace);         
 
 % calculate error between single-filter ABP and criterion
-[ ABP_error ] = prmse(AccelRef, ABP_AccelEstim);
+[ ABP_error ] = rmse(AccelRef, ABP_AccelEstim);
+[ ABP_perror ] = prmse(AccelRef, ABP_AccelEstim);
 
 % compares the mins and maxes of criterion and single-filter ABP estimate
-minABP_error = abs((min(AccelRef) - min(ABP_AccelEstim)) / (min(AccelRef))) * 100;
-maxABP_error = abs((max(AccelRef) - max(ABP_AccelEstim)) / (max(AccelRef))) * 100;
+minABP_error = (min(AccelRef) - min(ABP_AccelEstim));
+maxABP_error = (max(AccelRef) - max(ABP_AccelEstim));
+
+% computes percent error at mins and maxes
+minABP_perror = ((minABP_error)/min(AccelRef))*100;
+maxABP_perror = ((maxABP_error)/max(AccelRef))*100;
 
 %  Display analysis statistics  %
 disp( '   -------------------')
 disp( ['      Cut-off frequency ',num2str(coABP)  ,' Hz'] )
-disp( ['Second Order Derivative %Root Mean Square Error ',num2str(ABP_error),' % '] )
-disp( ['Signal Minimum %Error ',num2str(minABP_error),' % '] )
-disp( ['Signal Maximum %Error ',num2str(maxABP_error),' % '] )
+disp( ['Second Order Derivative Root Mean Square Error ',num2str(ABP_error),' rad.s^-2 '...,
+    '(',num2str(ABP_perror),'%) '] )
+disp( ['Signal Minimum Error ',num2str(minABP_error),' rad.s^-2 (',num2str(minABP_perror),'%) '] )
+disp( ['Signal Maximum Error ',num2str(maxABP_error),' rad.s^-2 (',num2str(maxABP_perror),'%) '] )
 disp( '   -------------------')
 
-%%  ABP-BASED SEGMENT FILTERING     
 
+%%  ABP-BASED SEGMENT FILTERING (Automatic Segment Filtering Procedure)
 % Estimate displacement and acceleration 
-[TKEO,MAD3, SegFilt_DEstim, SegFilt_AEstim, CPs, fco ] = segfilt_estim(RawDisplace);
+[TKEO, MAD3, SegFilt_DEstim, SegFilt_AEstim, CPs, fco ] = ASFP(dt, forder, RawDisplace);
 
-%% COMPUTE ERRORS %%
+if length(fco) == 1
+    disp('TKEO-median absolute deviation analysis determined single filter is appropriate')
+end
 
-% Segment filtering whole signal accel error
-[ SegFilt_Aerror ] = prmse(AccelRef, SegFilt_AEstim);
+
+% COMPUTE ERRORS 
+
+% Segment filtering whole signal accel percent error
+[ SegFilt_Aerror ] = rmse(AccelRef, SegFilt_AEstim);
+[ SegFilt_pAerror ] = prmse(AccelRef, SegFilt_AEstim);
 
 % Segment by segment errors
 % initialize
 segfilt_segAerr = zeros(1,length(CPs)+1);
 ABP_segAerr = zeros(1,length(CPs)+1);
 
+
+if isempty(CPs) == 0
 % First Segment
-segfilt_segAerr(1) = prmse(AccelRef(1:CPs(1)), SegFilt_AEstim(1:CPs(1)));         
-ABP_segAerr(1) = prmse(AccelRef(1:CPs(1)), ABP_AccelEstim(1:CPs(1)));
+segfilt_segAerr(1) = rmse(AccelRef(1:CPs(1)), SegFilt_AEstim(1:CPs(1)));         
+ABP_segAerr(1) = rmse(AccelRef(1:CPs(1)), ABP_AccelEstim(1:CPs(1)));
 
 for e = 2:length(CPs)
     
 % Middle Segments
-segfilt_segAerr(e) = prmse(AccelRef(CPs(e-1)+1:CPs(e)), SegFilt_AEstim(CPs(e-1)+1:CPs(e)));       
-ABP_segAerr(e) = prmse(AccelRef(CPs(e-1)+1:CPs(e)), ABP_AccelEstim(CPs(e-1)+1:CPs(e)));
+segfilt_segAerr(e) = rmse(AccelRef(CPs(e-1)+1:CPs(e)), SegFilt_AEstim(CPs(e-1)+1:CPs(e)));       
+ABP_segAerr(e) = rmse(AccelRef(CPs(e-1)+1:CPs(e)), ABP_AccelEstim(CPs(e-1)+1:CPs(e)));
 
 end
 
 % Last Segment
-segfilt_segAerr(end)  = prmse(AccelRef(CPs(end)+1:end), SegFilt_AEstim(CPs(end)+1:end)); 
-ABP_segAerr(end) = prmse(AccelRef(CPs(end)+1:end), ABP_AccelEstim(CPs(end)+1:end));
+segfilt_segAerr(end)  = rmse(AccelRef(CPs(end)+1:end), SegFilt_AEstim(CPs(end)+1:end)); 
+ABP_segAerr(end) = rmse(AccelRef(CPs(end)+1:end), ABP_AccelEstim(CPs(end)+1:end));
 
 segAerr = [segfilt_segAerr; ABP_segAerr];
 
+end
+
 
 % compares the mins and maxes of criterion and estimate
-min_segfilt_error = abs((min(AccelRef) - min(SegFilt_AEstim)) / (min(AccelRef))) * 100;
-max_segfilt_error = abs((max(AccelRef) - max(SegFilt_AEstim)) / (max(AccelRef))) * 100;
+min_segfilt_error = min(AccelRef) - min(SegFilt_AEstim);
+max_segfilt_error = max(AccelRef) - max(SegFilt_AEstim);
+
+min_segfilt_perror = ((min(AccelRef) - min(SegFilt_AEstim))/min(AccelRef))*100;
+max_segfilt_perror = ((max(AccelRef) - max(SegFilt_AEstim))/max(AccelRef))*100;
 
 
 %   display analysis statistics  %
 disp( '   -------------------')
 disp( ['      Cut-off frequencies [',num2str(fco),' Hz]'] )
-disp( ['Second Order Derivative %Root Mean Square Error ',num2str(SegFilt_Aerror),' % '] )
-disp( ['Signal Minimum %Error ',num2str(min_segfilt_error),' % '] )
-disp( ['Signal Maximum %Error ',num2str(max_segfilt_error),' % '] )
+disp( ['Second Order Derivative Root Mean Square Error ',num2str(SegFilt_Aerror),' rad.s^-2 '...,
+    '(',num2str(SegFilt_pAerror),'%) '] )
+disp( ['Signal Minimum Error ',num2str(min_segfilt_error),' rad.s^-2 (',num2str(min_segfilt_perror),'%) '] )
+disp( ['Signal Maximum Error ',num2str(max_segfilt_error),' rad.s^-2 (',num2str(max_segfilt_perror),'%) '] )
 disp( '   -------------------')
 disp( '   -------------------')
-array2table(segAerr)
+
+
+
+%% PLOT RESULTS
+
+% Colors
+BeaverBlue = [30/255 64/255 124/255];
+Original1887 = [188/255 32/255 75/255];
+PennsForest = [74/255 119/255 41/255];
+    
+% Segment location text locations
+Stextloc1 = (Time(CPs(1))/2);
+Stextloc3 = (Time(CPs(2)) + Time(CPs(3)))/2;
+
+% using arrows for segments 2 and 4
+Sarrow1_xloc = [0.425 0.385];
+Sarrow1_yloc = [.575 .5286];
+
+Sarrow2_xloc = [0.685 0.65];
+Sarrow2_yloc = [.575 .5286];
+
+Stext1 = 'Segment 1';
+Stext2 = 'Segment 2';
+Stext3 = 'Segment 3';
+Stext4 = 'Segment 4';
+Stext5 = 'Segment 5';
+
+figure(1)
+
+% Raw Displacement data
+subplot('Position',[0.127 0.77 .35 .2])
+plot(Time, RawDisplace,'k')
+box off
+text(0.065,1.42,'a','Fontsize',14,'fontweight','bold')
+xlabel('Time [s]','FontSize',10)
+ylabel('Angular Displacement [rad]','FontSize',10)
+axis tight
+
+% TKEO analysis
+subplot('Position',[0.55 0.77 .35 .2])
+plot(Time, abs(TKEO),'color',PennsForest,'LineWidth',2)
+box off
+hold on
+plot([0 Time(end)], [MAD3 MAD3],'k','Linewidth',2)
+plot([Time(CPs(1)) Time(CPs(1))], [-2*10^(-4) 14*10^(-4)],'k--')
+plot([Time(CPs(2)) Time(CPs(2))], [-2*10^(-4) 14*10^(-4)],'k--')
+plot([Time(CPs(3)) Time(CPs(3))], [-2*10^(-4) 9*10^(-4)],'k--')
+plot([Time(CPs(4)) Time(CPs(4))], [-2*10^(-4) 9*10^(-4)],'k--')
+text(0.069,13*10^(-4),'b','Fontsize',14,'fontweight','bold')
+xlabel('Time [s]','FontSize',10)
+ylabel('Teager-Kaiser Energy [rad^{2}]','FontSize',10)
+legend({'TKEO','3 x MAD'},'FontSize',8,'Box','off')
+axis tight
+
+% Filtering comparison
+
+% filter frequency cut-off label text location
+Atextloc1 = Time(CPs(1))/2;
+Atextloc3 = (Time(CPs(2)) + Time(CPs(3)))/2;
+
+% using arrows for segments 2 and 4
+arrow1_xloc = [0.41 0.395];
+arrow1_yloc = [.15 .17];
+
+arrow2_xloc = [0.67 0.65];
+arrow2_yloc = [.17 .185];
+
+% annotate the cut-off frequency used for that signal    
+Atext1 = [num2str(fco(1)),' Hz'];
+Atext2 = [num2str(fco(2)),' Hz'];
+Atext3 = [num2str(fco(3)),' Hz'];
+Atext4 = [num2str(fco(4)),' Hz'];
+Atext5 = [num2str(fco(5)),' Hz'];
+
+% Criterion signal
+subplot('Position',[0.127 0.51 .77 .18])
+plot( Time, AccelRef,'k:','Linewidth',1.5)
+hold on
+plot([Time(CPs(1)) Time(CPs(1))], [-400 200],'k--')
+plot([Time(CPs(2)) Time(CPs(2))], [-400 200],'k--')
+plot([Time(CPs(3)) Time(CPs(3))], [-400 200],'k--')
+plot([Time(CPs(4)) Time(CPs(4))], [-400 200],'k--')
+text(0.03,160,'c','Fontsize',14,'fontweight','bold')
+% ylabel('Angular Acceleration [rad/s^2]','FontSize', 10)
+dummyh1 = line(nan, nan, 'Linestyle', 'none', 'Marker', 'none', 'Color', 'none');
+legend(dummyh1, 'Criterion Signal',...
+    'FontSize',10,'Location','southeast','Box','off')
+axis tight
+box off
+
+% Single Filter Estimate
+subplot('Position',[0.127 0.3 .77 .18])
+plot(Time, ABP_AccelEstim, '-.','Color',Original1887,'LineWidth', 2)
+hold on
+plot([Time(CPs(1)) Time(CPs(1))], [-400 200],'k--')
+plot([Time(CPs(2)) Time(CPs(2))], [-400 200],'k--')
+plot([Time(CPs(3)) Time(CPs(3))], [-240 200],'k--')
+plot([Time(CPs(4)) Time(CPs(4))], [-240 200],'k--')
+plot([Time(CPs(3)) Time(CPs(3))], [-400 -345],'k--')
+plot([Time(CPs(4)) Time(CPs(4))], [-400 -345],'k--')
+text(0.03,160,'d','Fontsize',14,'fontweight','bold')
+ylabel('Angular Acceleration [rad.s^{-2}]','FontSize', 13)
+dummyh2 = line(nan, nan, 'Linestyle', 'none', 'Marker', 'none', 'Color', 'none');
+legend(dummyh2, 'Common Filtering (ABP) Estimate, \alpha\it_A_B_P\rm',...
+    'FontSize',10,'Location','southeast','Box','off')
+axis tight
+box off
+
+% Automatic Segment Filtering Estimate
+subplot('Position',[0.127 0.09 .77 .18])
+plot( Time, SegFilt_AEstim,'color',BeaverBlue,'LineWidth', 2)
+hold on
+plot([Time(CPs(1)) Time(CPs(1))], [-400 200],'k--')
+plot([Time(CPs(2)) Time(CPs(2))], [-400 200],'k--')
+plot([Time(CPs(3)) Time(CPs(3))], [-240 200],'k--')
+plot([Time(CPs(4)) Time(CPs(4))], [-240 200],'k--')
+plot([Time(CPs(3)) Time(CPs(3))], [-400 -345],'k--')
+plot([Time(CPs(4)) Time(CPs(4))], [-400 -345],'k--')
+text(0.03,165,'e','Fontsize',14,'fontweight','bold')
+text(Atextloc1,85, Atext1,'FontSize',10,'HorizontalAlignment','center','color',BeaverBlue)
+annotation('textarrow',arrow1_xloc,arrow1_yloc,'string',Atext2,'color',BeaverBlue,'FontSize',10)
+text(Atextloc3,50, Atext3,'FontSize',10,'HorizontalAlignment','center','color',BeaverBlue)
+annotation('textarrow',arrow2_xloc,arrow2_yloc,'string',Atext4,'color',BeaverBlue,'FontSize',10)
+text(1.03,65, Atext5,'FontSize',10,'HorizontalAlignment','center','color',BeaverBlue)
+hold off
+% ylabel('Angular Acceleration [rad/s^2]','FontSize', 10)
+xlabel('Time [s]','FontSize', 12)
+dummyh3 = line(nan, nan, 'Linestyle', 'none', 'Marker', 'none', 'Color', 'none');
+legend(dummyh3, 'Proposed Filtering (ASFP) Estimate, \alpha\it_A_S_F_P\rm',...
+    'FontSize',10,'Location','southeast','Box','off')
+set(gcf,'Position',[642, 15, 750, 1225])
+axis tight
+box off
+
+
+%% THE END %% 
+
