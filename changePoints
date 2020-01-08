@@ -1,13 +1,28 @@
 function [ numChangePoints, CPs ] = changePoints(TKEO, MAD3)
-
+% -----------
+%
+% Daniel J. Davis, The Pennsylvania State University, July 2019
+%
+% -----------
+%
 % function uses the TKEO to determine the number of change-points in a
 % given signal and lists the sample indexes where they occur
+%
+% --------------------------------------------------------------
 
 % locate where the TKEO is greater than the outlier criterion
-Outliers = find(TKEO > MAD3);
+Outliers = find(abs(TKEO) > MAD3);
 
-% determine where the outlier samples break ie, going from one area of
-% outliers to the next
+% if there are no outliers, no change points within the signal are found,
+% change point is empty
+if isempty(Outliers) == 1
+    numChangePoints = 0;
+    CPs = [];
+
+else
+    
+% determine where the outlier samples break (ie, going from one area of
+% outliers to the next)
 ConsecBreaks = find(diff(Outliers) ~= 1);
 
 % a single break indicates two outlier areas and so on
@@ -25,14 +40,51 @@ CPs(1) = Outliers(1);
 
 % successive change points occur at the break in consecutive sample indexes 
 for i = 1:length(ConsecBreaks)
-    CPs(i+1) = Outliers(ConsecBreaks(i));
-    CPs(i+2) = Outliers(ConsecBreaks(i)+1);
+    CPs(i*2) = Outliers(ConsecBreaks(i));
+    CPs((i*2)+1) = Outliers(ConsecBreaks(i)+1);
 end
 
 % last change point is last instance of outlier
 CPs(end) = Outliers(end);
+if CPs(end) == CPs(end-1)
+    CPs(end) = [];
+end
 
+% if TKEO exceeds 3xMAD then stays above, last outlier will be last data
+% point. In this case, last outlier is not a change point.
+if CPs(end) == length(TKEO)
+    CPs(end) = [];
+end
+
+% check length of segments between CPs
+segLengths = diff(CPs);
+
+% if segLengths contains a value < 10, the two cut points on either side of
+% said segment are deleted (Value can be adjusted based on sampling frequency; NOT USED IN ASFP MANUSCRIPT)
+tooShort = isempty(find(segLengths < 10,1));
+tooShortindx = find(segLengths < 10);
+
+if tooShort == 0
+    for i = 1:length(tooShortindx)
+    CPs(tooShortindx(i):tooShortindx(i)+1) = [];
+    end
+end
+ 
+% if there is only one CP, segLengths will be empty 
+oneCP = isempty(segLengths);
+
+if oneCP == 1
+    begin2CP = CPs - 1;
+    if begin2CP < 5
+        CPs = [];
+    end
+end
+
+% CPs = [193, 208];
 numChangePoints = length(CPs);
 
 
 end
+
+
+%% THE END %%
