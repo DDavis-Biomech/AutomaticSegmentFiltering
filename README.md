@@ -1,4 +1,4 @@
-# SegmentFiltering
+# AutomaticSegmentFiltering
 
   Within this repository:
   
