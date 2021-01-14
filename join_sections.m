@@ -1,4 +1,4 @@
-function [SegFilter_Estimate] = join(CPs, segment_estims)
+function [SegFilter_Estimate] = join_sections(CPs, segment_estims)
 % -----------
 %
 % Daniel J. Davis, The Pennsylvania State University, July 2019
@@ -17,6 +17,10 @@ function [SegFilter_Estimate] = join(CPs, segment_estims)
 % segment_estims - segment estimates created by filtering signal at cut-off
 %   frequencies defined by respective segment
 
+[r,~] = size(CPs);
+if r > 1
+    CPs = CPs';
+end
 
 % number of change points and segments
 numCPs = length(CPs);
@@ -24,8 +28,9 @@ numSegs = numCPs + 1;
 
 % find shortest segment length to determine amount of "pad" on each side of
 % join
+evalCPs = [0, CPs, length(segment_estims)];
 if numCPs > 1
-shortestSmooth = min(diff(CPs));
+shortestSmooth = min(diff(evalCPs));
 
 % round the pad to be an integer
 mult = 2;
@@ -65,6 +70,7 @@ difs = zeros(length(smoothLength), numCPs);
 weightedDifs = zeros(length(smoothLength), numCPs);
 joins = zeros(length(smoothLength), numCPs);
 
+
 for j = 1:numCPs   
 
 % creates two overlaps per change point (one for each input into
@@ -92,7 +98,7 @@ end
 % first segment
 % index from beginning of data up to the beginning of the pad (which is
 % found at the change points - the pad +1)
-first2pad_indx = 1:CPs(1)-(pad+1);
+first2pad_indx = 1:(CPs(1)-(pad+1));
 SegFilter_Estimate(1,first2pad_indx) = segment_estims(first2pad_indx,1)';
 
 for p = 2:numCPs
